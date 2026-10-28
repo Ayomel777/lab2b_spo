@@ -1,5 +1,7 @@
 package analyzer
 
+import "sort"
+
 type SubgraphInfo struct {
 	SelectVertex  int   `json:"selectVertex"`
 	Transitions   []int `json:"transitions"`
@@ -33,9 +35,7 @@ func AnalyzeBoundary(cfg *CFG) BoundaryResult {
 
 	for _, n := range cfg.Nodes {
 		if n == cfg.End {
-			res.Vertices = append(res.Vertices, VertexComplexity{
-				VertexID: n.ID, Complexity: 0, Kind: "end",
-			})
+			res.Vertices = append(res.Vertices, VertexComplexity{VertexID: n.ID, Complexity: 0, Kind: "end"})
 			continue
 		}
 		if len(n.Out) <= 1 {
@@ -43,9 +43,7 @@ func AnalyzeBoundary(cfg *CFG) BoundaryResult {
 			if n == cfg.Start {
 				kind = "start"
 			}
-			res.Vertices = append(res.Vertices, VertexComplexity{
-				VertexID: n.ID, Complexity: 1, Kind: kind,
-			})
+			res.Vertices = append(res.Vertices, VertexComplexity{VertexID: n.ID, Complexity: 1, Kind: kind})
 			res.Sa += 1
 			continue
 		}
@@ -57,6 +55,7 @@ func AnalyzeBoundary(cfg *CFG) BoundaryResult {
 		for _, s := range n.Out {
 			transitions = append(transitions, s.ID)
 		}
+		sort.Ints(transitions)
 
 		lowerID := -1
 		if merge != nil {
@@ -97,42 +96,20 @@ func boundaryForSelect(cfg *CFG, v *CFGNode) (*CFGNode, int) {
 		}
 	}
 
+	// Для циклов нижняя граница — это узел выхода
 	if loopSucc != nil && exitSucc != nil {
-		return exitSucc, computeLoopComplexity(v, exitSucc)
+		return exitSucc, computeComplexity(v, exitSucc)
 	}
 
+	// Для if/case ищем точку слияния
 	merge := findMergePoint(v.Out)
 	if merge == nil {
 		merge = cfg.End
 	}
-	return merge, computeBranchComplexity(v, merge)
+	return merge, computeComplexity(v, merge)
 }
 
-func computeLoopComplexity(v, exit *CFGNode) int {
-	visited := map[int]bool{}
-	queue := []*CFGNode{}
-	for _, s := range v.Out {
-		if s != exit {
-			queue = append(queue, s)
-		}
-	}
-	for len(queue) > 0 {
-		n := queue[0]
-		queue = queue[1:]
-		if visited[n.ID] || n == exit {
-			continue
-		}
-		visited[n.ID] = true
-		for _, s := range n.Out {
-			if s != exit && !visited[s.ID] {
-				queue = append(queue, s)
-			}
-		}
-	}
-	return len(visited) + 1
-}
-
-func computeBranchComplexity(v, merge *CFGNode) int {
+func computeComplexity(v, merge *CFGNode) int {
 	visited := map[int]bool{}
 	queue := []*CFGNode{}
 	for _, s := range v.Out {
@@ -157,9 +134,6 @@ func computeBranchComplexity(v, merge *CFGNode) int {
 }
 
 func collectIntermediate(v, merge *CFGNode) []int {
-	if merge == nil {
-		return nil
-	}
 	visited := map[int]bool{}
 	queue := []*CFGNode{}
 	for _, s := range v.Out {
@@ -167,7 +141,6 @@ func collectIntermediate(v, merge *CFGNode) []int {
 			queue = append(queue, s)
 		}
 	}
-	result := []int{}
 	for len(queue) > 0 {
 		n := queue[0]
 		queue = queue[1:]
@@ -175,12 +148,22 @@ func collectIntermediate(v, merge *CFGNode) []int {
 			continue
 		}
 		visited[n.ID] = true
-		result = append(result, n.ID)
 		for _, s := range n.Out {
 			if s != merge && !visited[s.ID] {
 				queue = append(queue, s)
 			}
 		}
 	}
+
+	// Включаем саму выбирающую вершину, если она является частью цикла
+	if canReach(v, v) {
+		visited[v.ID] = true
+	}
+
+	result := []int{}
+	for id := range visited {
+		result = append(result, id)
+	}
+	sort.Ints(result)
 	return result
 }

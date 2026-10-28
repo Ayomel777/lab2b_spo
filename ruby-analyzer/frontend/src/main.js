@@ -64,9 +64,13 @@ async function runAnalysis() {
 
 function renderBoundary(b) {
     const subs = b.subs || [];
-    const vertices = b.vertices || [];
+    let vertices = b.vertices || [];
     const nu = vertices.length;
 
+    // Сортируем вершины по ID на всякий случай, чтобы они шли строго по порядку
+    vertices.sort((a, b) => a.vertexId - b.vertexId);
+
+    // Таблица 1 (остается без изменений)
     const subsRows = subs.map(s => `
       <tr>
         <td>${s.selectVertex}</td>
@@ -77,13 +81,23 @@ function renderBoundary(b) {
       </tr>
     `).join('');
 
-    const vertRows = vertices.map(v => `
-      <tr>
-        <td>${v.vertexId}</td>
-        <td>${v.kind || '—'}</td>
-        <td class="num">${v.complexity}</td>
-      </tr>
-    `).join('');
+    // Таблица 2 (Делаем в две колонки)
+    const mid = Math.ceil(nu / 2);
+    let vertRows = '';
+
+    for (let i = 0; i < mid; i++) {
+        const v1 = vertices[i];
+        const v2 = vertices[i + mid];
+
+        vertRows += `
+          <tr>
+            <td>${v1.vertexId}</td>
+            <td class="num">${v1.complexity}</td>
+            <td>${v2 ? v2.vertexId : ''}</td>
+            <td class="num">${v2 ? v2.complexity : ''}</td>
+          </tr>
+        `;
+    }
 
     $result.innerHTML = `
       <div class="cards">
@@ -127,17 +141,19 @@ function renderBoundary(b) {
         </tbody>
       </table>
 
-      <h3>Таблица 2. Скорректированные сложности вершин графа</h3>
+      <h3>Исправленная таблица 2. Скорректированные сложности вершин</h3>
+      <p class="muted">Для графа из ${nu} вершин получаем следующие значения:</p>
       <table>
         <thead>
           <tr>
             <th>№ вершины</th>
-            <th>Тип</th>
+            <th>Скорр. сложность</th>
+            <th>№ вершины</th>
             <th>Скорр. сложность</th>
           </tr>
         </thead>
         <tbody>
-          ${vertRows || '<tr><td colspan="3" class="muted">—</td></tr>'}
+          ${vertRows || '<tr><td colspan="4" class="muted">—</td></tr>'}
         </tbody>
       </table>
     `;
